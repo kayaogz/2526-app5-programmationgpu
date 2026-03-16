@@ -32,7 +32,7 @@ At the end of weeks 3, 4, 5, 6 there will be mini-exams of 20-25 minutes, giving
 
 **Code deciphering:** Given a complete GPU code (with anonymized variable names), understand and explain what the code actually computes.
 
-You can bring **four** A4 sheets to the mini-exam (both sides); no other material is allowed.
+You can bring **four** A4 sheets to the mini-exam (both sides); no other material is allowed. No electronics will be allowed; computers, smartphones, tablets etc. must be put in your backpack.
 
 The mini-exam of week n will cover the material up to (including) week n - 1 (e.g., first mini-exam will be on the material of first two weeks).
 

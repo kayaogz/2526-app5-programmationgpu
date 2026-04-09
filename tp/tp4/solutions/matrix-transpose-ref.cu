@@ -149,46 +149,6 @@ int main()
     std::chrono::duration<double> duration = end-start;
     printf("transposeGPUSharedMemoryBankConflicts %f s\n",duration.count()/N);
   }
-  { 
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimGrid.x = (N-1)/BSXY + 1;
-    dimGrid.y = (N-1)/BSXY + 1;
-    dimGrid.z = 1;
-    dimBlock.x = BSXY;
-    dimBlock.y = BSXY;
-    dimBlock.z = 1;
-    cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
-    auto start=std::chrono::high_resolution_clock::now();
-    for(int i=0;i<N-1;i++)
-      transposeGPUSharedMemoryInplaceA<<<dimGrid, dimBlock>>>(dA,N);
-    cudaError_t cudaerr = cudaDeviceSynchronize();
-    auto end=std::chrono::high_resolution_clock::now();
-    cudaMemcpy(Atemp, dA, N * N * sizeof(float), cudaMemcpyDeviceToHost);
-    verifyResults(At,Atemp,N);
-    std::chrono::duration<double> duration = end-start;
-    printf("transposeGPUSharedMemoryInplaceA %f s\n",duration.count()/(N-1));
-  }
-  { 
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimGrid.x = (N-1)/BSXY + 1;
-    dimGrid.y = (N-1)/BSXY + 1;
-    dimGrid.z = 1;
-    dimBlock.x = BSXY; 
-    dimBlock.y = BSXY;
-    dimBlock.z = 1;
-    cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
-    auto start=std::chrono::high_resolution_clock::now();
-    for(int i=0;i<N-1;i++)
-      transposeGPUSharedMemoryInplaceBankConflicts<<<dimGrid, dimBlock>>>(dA,N);
-    cudaError_t cudaerr = cudaDeviceSynchronize();
-    auto end=std::chrono::high_resolution_clock::now();
-    cudaMemcpy(Atemp, dA, N * N * sizeof(float), cudaMemcpyDeviceToHost);
-    verifyResults(At,Atemp,N);
-    std::chrono::duration<double> duration = end-start;
-    printf("transposeGPUSharedMemoryInplaceBankConflicts %f s\n",duration.count()/(N-1));
-  }
   // Deallocate dA and dAt
   // TODO ...
   cudaFree(dA);

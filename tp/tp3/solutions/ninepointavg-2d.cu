@@ -65,33 +65,110 @@ void verifyResults(const float *cpu_res, const float *gpu_res, const char* kerne
   std::printf("%s verified successfully!\n", kernel_name);
 }
 
+// Kernel 1: 1D grid of blocks, 1 thread per block
+// Kernel 1: Grille 1D de blocs, 1 thread par bloc
 __global__ void kernel1(const float *A, float *Aavg) {
-  // TODO: Implement Kernel 1
-  // TODO: Implanter le Kernel 1
+  int idx = blockIdx.x;
+  int i = idx % N;
+  int j = idx / N;
+  
+  if (i >= 1 && i < N - 1 && j >= 1 && j < N - 1) {
+    Aavg[i + j * N] = (A[i - 1 + (j - 1) * N] + A[i - 1 + (j) * N] + A[i - 1 + (j + 1) * N] +
+                       A[i + (j - 1) * N]     + A[i + (j) * N]     + A[i + (j + 1) * N] +
+                       A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) * (1.0f / 9.0f);
+  }
 }
 
+// Kernel 2: 2D grid of blocks, 1 thread per block
+// Kernel 2: Grille 2D de blocs, 1 thread par bloc
 __global__ void kernel2(const float *A, float *Aavg) {
-  // TODO: Implement Kernel 2
-  // TODO: Implanter le Kernel 2
+  int i = blockIdx.x;
+  int j = blockIdx.y;
+
+  if (i >= 1 && i < N - 1 && j >= 1 && j < N - 1) {
+    Aavg[i + j * N] = (A[i - 1 + (j - 1) * N] + A[i - 1 + (j) * N] + A[i - 1 + (j + 1) * N] +
+                       A[i + (j - 1) * N]     + A[i + (j) * N]     + A[i + (j + 1) * N] +
+                       A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) * (1.0f / 9.0f);
+  }
 }
 
+// Kernel 3: 2D grid of blocks, 2D threads
+// Kernel 3: Grille 2D de blocs, threads 2D
 __global__ void kernel3(const float *A, float *Aavg) {
-  // TODO: Implement Kernel 3
-  // TODO: Implanter le Kernel 3
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if (i >= 1 && i < N - 1 && j >= 1 && j < N - 1) {
+    Aavg[i + j * N] = (A[i - 1 + (j - 1) * N] + A[i - 1 + (j) * N] + A[i - 1 + (j + 1) * N] +
+                       A[i + (j - 1) * N]     + A[i + (j) * N]     + A[i + (j + 1) * N] +
+                       A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) * (1.0f / 9.0f);
+  }
 }
 
+// Kernel 4: 2D grid, 2D threads, overlapping shared memory
+// Kernel 4: Grille 2D, threads 2D, mémoire partagée avec chevauchement
 __global__ void kernel4(const float *A, float *Aavg) {
-  // TODO: Implement Kernel 4
-  // TODO: Implanter le Kernel 4
+  __shared__ float sA[BSXY][BSXY];
+
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  
+  int i = blockIdx.x * (BSXY - 2) + tx;
+  int j = blockIdx.y * (BSXY - 2) + ty;
+
+  if (i < N && j < N) {
+    sA[tx][ty] = A[i + j * N];
+  }
+  __syncthreads();
+
+  if (tx >= 1 && tx < BSXY - 1 && ty >= 1 && ty < BSXY - 1 && i >= 1 && i < N - 1 && j >= 1 && j < N - 1) {
+    Aavg[i + j * N] = (sA[tx - 1][ty - 1] + sA[tx - 1][ty] + sA[tx - 1][ty + 1] +
+                       sA[tx][ty - 1]     + sA[tx][ty]     + sA[tx][ty + 1] +
+                       sA[tx + 1][ty - 1] + sA[tx + 1][ty] + sA[tx + 1][ty + 1]) * (1.0f / 9.0f);
+  }
 }
 
+// Kernel 5: Each block loads (K*BSXY) x (K*BSXY) elements and computes the interior
+// Kernel 5: Chaque bloc charge (K*BSXY) x (K*BSXY) éléments et calcule l'intérieur
 __global__ void kernel5(const float *A, float *Aavg) {
-  // TODO: Implement Kernel 5
-  // TODO: Implanter le Kernel 5
+  const int s_dim = K * BSXY;
+  __shared__ float sA[K * BSXY][K * BSXY];
+  
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  
+  int bStartX = blockIdx.x * (s_dim - 2); 
+  int bStartY = blockIdx.y * (s_dim - 2);
+
+  for (int j = ty; j < s_dim; j += BSXY) {
+    for (int i = tx; i < s_dim; i += BSXY) {
+      int gi = bStartX + i;
+      int gj = bStartY + j;
+      sA[i][j] = (gi < N && gj < N) ? A[gi + gj * N] : 0.0f;
+    }
+  }
+  __syncthreads();
+
+  for (int k_j = 0; k_j < K; k_j++) {
+    for (int k_i = 0; k_i < K; k_i++) {
+      int si = tx * K + k_i + 1; 
+      int sj = ty * K + k_j + 1;
+      
+      if (si < s_dim - 1 && sj < s_dim - 1) {
+        int gi = bStartX + si;
+        int gj = bStartY + sj;
+
+        if (gi >= 1 && gi < N - 1 && gj >= 1 && gj < N - 1) {
+          Aavg[gi + gj * N] = (sA[si - 1][sj - 1] + sA[si - 1][sj] + sA[si - 1][sj + 1] +
+                               sA[si][sj - 1]     + sA[si][sj]     + sA[si][sj + 1] +
+                               sA[si + 1][sj - 1] + sA[si + 1][sj] + sA[si + 1][sj + 1]) * (1.0f / 9.0f);
+        }
+      }
+    }
+  }
 }
 
-int main()
-{
+int main() {
   size_t bytes = N * N * sizeof(float);
   A = (float *) malloc(bytes);
   float *Aavg_ref = (float *) malloc(bytes);
@@ -117,8 +194,7 @@ int main()
   // --- Kernel 1 Execution ---
   // --- Exécution du Kernel 1 ---
   cudaMemset(d_Aavg, 0, bytes);
-  // TODO: Compute grid and block dimensions, then launch kernel1
-  // TODO: Calculer les dimensions de grille et de bloc, puis lancer kernel1
+  kernel1<<<N * N, 1>>>(d_A, d_Aavg);
   
   cudaDeviceSynchronize();
   cudaMemcpy(Aavg_gpu, d_Aavg, bytes, cudaMemcpyDeviceToHost);
@@ -127,8 +203,8 @@ int main()
   // --- Kernel 2 Execution ---
   // --- Exécution du Kernel 2 ---
   cudaMemset(d_Aavg, 0, bytes);
-  // TODO: Compute grid and block dimensions, then launch kernel2
-  // TODO: Calculer les dimensions de grille et de bloc, puis lancer kernel2
+  dim3 grid2(N, N);
+  kernel2<<<grid2, 1>>>(d_A, d_Aavg);
   
   cudaDeviceSynchronize();
   cudaMemcpy(Aavg_gpu, d_Aavg, bytes, cudaMemcpyDeviceToHost);
@@ -137,8 +213,9 @@ int main()
   // --- Kernel 3 Execution ---
   // --- Exécution du Kernel 3 ---
   cudaMemset(d_Aavg, 0, bytes);
-  // TODO: Compute grid and block dimensions, then launch kernel3
-  // TODO: Calculer les dimensions de grille et de bloc, puis lancer kernel3
+  dim3 block3(BSXY, BSXY);
+  dim3 grid3((N + BSXY - 1) / BSXY, (N + BSXY - 1) / BSXY);
+  kernel3<<<grid3, block3>>>(d_A, d_Aavg);
   
   cudaDeviceSynchronize();
   cudaMemcpy(Aavg_gpu, d_Aavg, bytes, cudaMemcpyDeviceToHost);
@@ -147,8 +224,9 @@ int main()
   // --- Kernel 4 Execution ---
   // --- Exécution du Kernel 4 ---
   cudaMemset(d_Aavg, 0, bytes);
-  // TODO: Compute grid and block dimensions, then launch kernel4
-  // TODO: Calculer les dimensions de grille et de bloc, puis lancer kernel4
+  dim3 block4(BSXY, BSXY);
+  dim3 grid4((N + (BSXY - 2) - 1) / (BSXY - 2), (N + (BSXY - 2) - 1) / (BSXY - 2));
+  kernel4<<<grid4, block4>>>(d_A, d_Aavg);
   
   cudaDeviceSynchronize();
   cudaMemcpy(Aavg_gpu, d_Aavg, bytes, cudaMemcpyDeviceToHost);
@@ -157,8 +235,10 @@ int main()
   // --- Kernel 5 Execution ---
   // --- Exécution du Kernel 5 ---
   cudaMemset(d_Aavg, 0, bytes);
-  // TODO: Compute grid and block dimensions, then launch kernel5
-  // TODO: Calculer les dimensions de grille et de bloc, puis lancer kernel5
+  dim3 block5(BSXY, BSXY); 
+  int outTileDim = K * BSXY - 2;
+  dim3 grid5((N + outTileDim - 1) / outTileDim, (N + outTileDim - 1) / outTileDim);
+  kernel5<<<grid5, block5>>>(d_A, d_Aavg);
   
   cudaDeviceSynchronize();
   cudaMemcpy(Aavg_gpu, d_Aavg, bytes, cudaMemcpyDeviceToHost);
